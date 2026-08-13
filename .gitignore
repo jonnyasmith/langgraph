@@ -1,0 +1,68 @@
+# Byte-compiled and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Packaging and build output
+build/
+dist/
+*.egg-info/
+/out/
+
+# Coverage and profiles
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.prof
+
+# Type checker and tool state
+.dmypy.json
+dmypy.json
+
+# LangGraph / checkpointer state written at runtime
+.langgraph_api/
+*.sqlite
+*.sqlite3
+*.db
+checkpoints/
+
+# Env and secrets (LLM API keys live here)
+.env
+.env.*
+__omp_shell(".env.example")
+
+# Notebook scratch
+.ipynb_checkpoints/
+
+# Local notes (keep on disk, do not commit)
+/plan.md
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*~
+.nfs*
+
+# Editors (keep .vscode/ settings that are committed)
+.idea/
+*.swp
+*.swo
+
+# Debug / local
+*.log
+tmp/
+temp/
