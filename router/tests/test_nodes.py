@@ -1,5 +1,6 @@
 from collections.abc import Callable, Sequence
 
+import pytest
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
 from router.backends import Backend, BackendOutcome
@@ -31,10 +32,15 @@ def returning(outcome: BackendOutcome) -> Backend:
     return backend
 
 
-def test_a_forced_route_is_recorded_without_scoring() -> None:
-    state = initial_state("x" * 1_000)
-
-    assert score_node(Route.LOCAL)(state) == {"route": Route.LOCAL}
+@pytest.mark.parametrize(
+    ("prompt", "forced_route"),
+    [
+        ("x" * 1_000, Route.LOCAL),
+        ("what is 2+2", Route.HOSTED),
+    ],
+)
+def test_a_forced_route_is_recorded_without_scoring(prompt: str, forced_route: Route) -> None:
+    assert score_node(forced_route)(initial_state(prompt)) == {"route": forced_route}
 
 
 def test_a_completed_outcome_becomes_a_state_delta() -> None:

@@ -7,8 +7,9 @@ Deterministic state machine that routes a prompt to the cheapest model that can 
 ## Shape
 
 A prompt enters the graph. A scoring node applies a heuristic and records a `Route`. A conditional
-edge reads that field and sends the run to one of two backend nodes. The node streams the answer to
-stdout, translates the backend outcome into a state delta, and the run ends.
+edge reads that field and sends the run to one of two backend nodes. The backend node passes chunks
+to an injected sink and translates the backend outcome into a state delta. The composition root owns
+the real stdout sink. The run then ends.
 
 ```text
 START ─► score ──(conditional edge on state["route"])──► local  ─► END
@@ -26,7 +27,7 @@ src/router/
   scoring.py     route_for(prompt) -> Route
   backends.py    Backend, BackendOutcome, local_backend, hosted_backend
   nodes.py       score_node, local_node, hosted_node   (factories)
-  graph.py       build_graph(local, hosted) -> CompiledStateGraph
+  graph.py       build_graph(local, hosted, on_chunk, forced_route=None) -> CompiledStateGraph
   __main__.py    CLI, env, composition root
 ```
 
@@ -35,6 +36,9 @@ src/router/
 `RouterState` is the single rigid, total `TypedDict` every node reads. `RouterStateDelta` is the
 partial write-side `TypedDict` every node returns. `Route` is a `StrEnum`; the outcome is a named
 union of `Completed`, `BackendUnavailable`, and `BackendRefused`.
+
+The partial write type is required because `dict[str, object]` does not satisfy LangGraph's node
+protocol under strict mypy. It also makes delta-only writes part of the checked contract.
 
 | Field | Reducer | Written by |
 | --- | --- | --- |
@@ -95,6 +99,8 @@ exceptions; `backends.py` catches them and returns variants instead:
 The boundary closes with a final `except Exception` mapping to `BackendRefused`. The `try` wraps
 only stream iteration. Connection errors, timeouts, and Ollama request errors become unavailable;
 provider status and response errors become refused. Both clients have a 30-second request timeout.
+`anthropic` and `ollama` are declared direct dependencies because this boundary catches their
+exception classes by identity; relying on them transitively would leave the boundary undeclared.
 
 The hosted client is lazy. A missing API key raises before the exception boundary, so local routes
 need no key and missing credentials are never mislabeled as a provider refusal. Model clients are
@@ -120,8 +126,9 @@ which keys the node writes. `local_node` and `hosted_node` are one implementatio
 bindings that differ only in the injected backend and the `route` value — duplicating the match
 block would hollow the module out.
 
-Nodes are pure: they read state, they return a delta, they never assign into the state argument.
-Streaming chunks to stdout is a side effect on the terminal, not on state.
+Nodes are state-pure: they read state, return a delta, and never assign into the state argument.
+Streaming is an explicit injected side effect. The composition root owns the stdout sink; tests
+replace it with `list.append`.
 
 ### `graph.py`
 
@@ -152,8 +159,9 @@ uv run python -m router --force hosted "prompt"
 uv run python -m router --metrics "prompt"
 ```
 
-The answer streams to stdout. `--metrics` prints route and token counts to **stderr**, so stdout
-stays pipeable.
+The answer streams to stdout. `--metrics` prints route, input and output token counts, and latency
+as one line on **stderr**, so stdout stays pipeable. Forced runs are marked `forced`. Successful
+runs exit 0, backend failures exit 1, and usage errors exit 2.
 
 Configuration and `.env` loading stay in the composition root rather than a pass-through
 `config.py`. The `.env` reader skips comments and blanks and never replaces an exported value.
@@ -204,3 +212,7 @@ than arranging a dead Ollama.
   conventional LangGraph layout, and it earns the file by owning the outcome translation. The cost
   is two public test surfaces instead of one.
 - **No cost-in-dollars metric.** It would mean hardcoding a price table that goes stale.
+- **LangGraph 1.x constrains several type details.** Node state parameters are named `state` to
+  satisfy its protocol. Nodes return the partial `RouterStateDelta`, because `dict[str, object]`
+  fails strict mypy at that seam. `CompiledStateGraph` carries all four generic parameters rather
+  than using a bare annotation for the same reason.

@@ -53,8 +53,17 @@ def _parser() -> argparse.ArgumentParser:
         description="Route a prompt to a local or hosted language model.",
     )
     parser.add_argument("prompt", nargs="?", help="prompt text; reads stdin when omitted")
-    parser.add_argument("--force", choices=tuple(Route), type=Route)
-    parser.add_argument("--metrics", action="store_true")
+    parser.add_argument(
+        "--force",
+        choices=tuple(Route),
+        type=Route,
+        help="bypass scoring and route to the selected backend",
+    )
+    parser.add_argument(
+        "--metrics",
+        action="store_true",
+        help="print route, token counts, and latency to stderr",
+    )
     return parser
 
 

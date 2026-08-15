@@ -39,6 +39,19 @@ uv run python -m router --force hosted "what is 2+2"
 uv run python -m router --metrics "what is 2+2"
 ```
 
+The command accepts one optional positional `prompt`. When it is absent, the command reads piped
+stdin; a positional prompt wins when both sources are present.
+
+| Option | Behaviour |
+| --- | --- |
+| `--force {local,hosted}` | Bypass scoring and use the selected backend |
+| `--metrics` | Print route, input/output token counts, and latency as one stderr line |
+| `--help` | Print the command surface and exit |
+
+A forced metrics line is marked `forced`, so it cannot be mistaken for a scored decision. Invalid
+`--force` values and missing prompts print usage and exit 2. Backend failures exit 1. Successful
+runs exit 0.
+
 The answer is the only stdout output. Metrics and errors go to stderr.
 
 ## Verify
