@@ -17,6 +17,10 @@ _HOSTED_MAX_TOKENS = 4096
 BackendOutcome = Completed | BackendUnavailable | BackendRefused
 
 
+class MissingCredentialError(RuntimeError):
+    pass
+
+
 class Backend(Protocol):
     def __call__(
         self, messages: Sequence[AnyMessage], on_chunk: Callable[[str], None]
@@ -51,7 +55,12 @@ def _invoke_local(
 ) -> BackendOutcome:
     try:
         return _collect_stream(stream, messages, on_chunk)
-    except (httpx.ConnectError, httpx.TimeoutException, ollama.RequestError) as error:
+    except (
+        ConnectionError,
+        httpx.ConnectError,
+        httpx.TimeoutException,
+        ollama.RequestError,
+    ) as error:
         return BackendUnavailable(str(error))
     except ollama.ResponseError as error:
         return BackendRefused(str(error))
@@ -96,7 +105,7 @@ def hosted_backend(model: str, api_key: str | None) -> Backend:
     def call(messages: Sequence[AnyMessage], on_chunk: Callable[[str], None]) -> BackendOutcome:
         nonlocal client
         if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is required for the hosted backend")
+            raise MissingCredentialError("ANTHROPIC_API_KEY is required for the hosted backend")
         if client is None:
             client = ChatAnthropic(
                 model_name=model,
@@ -105,11 +114,10 @@ def hosted_backend(model: str, api_key: str | None) -> Backend:
                 timeout=_REQUEST_TIMEOUT_SECONDS,
                 stop=None,
             )
+        active_client = client
 
         def stream(messages: Sequence[AnyMessage]) -> Iterator[AIMessageChunk]:
-            if client is None:
-                raise RuntimeError("hosted client was not initialized")
-            return client.stream(messages)
+            return active_client.stream(messages)
 
         return _invoke_hosted(stream, messages, on_chunk)
 

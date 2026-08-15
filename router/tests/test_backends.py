@@ -26,6 +26,7 @@ MESSAGES = [HumanMessage(content="hello")]
     ("error", "expected_type"),
     [
         (ollama.RequestError("cannot connect"), BackendUnavailable),
+        (ConnectionError("Failed to connect to Ollama"), BackendUnavailable),
         (ollama.ResponseError("overloaded", 503), BackendRefused),
         (httpx.ReadTimeout("timed out"), BackendUnavailable),
     ],
@@ -92,5 +93,5 @@ def test_hosted_provider_exceptions_become_outcomes(
 def test_a_missing_hosted_credential_raises_before_provider_translation() -> None:
     backend = backends.hosted_backend("claude", None)
 
-    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+    with pytest.raises(backends.MissingCredentialError, match="ANTHROPIC_API_KEY"):
         backend(MESSAGES, lambda chunk: None)

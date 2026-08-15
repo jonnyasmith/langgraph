@@ -3,11 +3,11 @@ import os
 import sys
 from collections.abc import Mapping, MutableMapping, Sequence
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, assert_never
 
 from langchain_core.messages import HumanMessage
 
-from router.backends import hosted_backend, local_backend
+from router.backends import MissingCredentialError, hosted_backend, local_backend
 from router.graph import build_graph
 from router.state import (
     BackendRefused,
@@ -83,12 +83,17 @@ def render_result(
     if not isinstance(outcome, Completed | BackendUnavailable | BackendRefused):
         raise RuntimeError("graph result did not contain an outcome")
 
-    if isinstance(outcome, BackendUnavailable):
-        print(f"{route} backend unavailable: {outcome.detail}", file=stderr)
-        return 1
-    if isinstance(outcome, BackendRefused):
-        print(f"{route} backend refused: {outcome.detail}", file=stderr)
-        return 1
+    match outcome:
+        case BackendUnavailable(detail):
+            print(f"{route} backend unavailable: {detail}", file=stderr)
+            return 1
+        case BackendRefused(detail):
+            print(f"{route} backend refused: {detail}", file=stderr)
+            return 1
+        case Completed():
+            pass
+        case _ as unreachable:
+            assert_never(unreachable)
 
     if metrics:
         input_tokens = result.get("input_tokens")
@@ -137,7 +142,7 @@ def main(
     graph = build_graph(local, hosted, emit, arguments.force)
     try:
         result = graph.invoke(_initial_state(prompt))
-    except RuntimeError as error:
+    except MissingCredentialError as error:
         print(str(error), file=stderr)
         return 1
     return render_result(

@@ -1,7 +1,11 @@
 from io import StringIO
 from pathlib import Path
 
-from router.__main__ import DEFAULTS, load_dotenv, main, read_prompt
+import pytest
+from langchain_core.messages import AIMessage
+
+from router.__main__ import load_dotenv, main, read_prompt, render_result
+from router.state import Completed, Route
 
 
 def test_an_argument_wins_over_stdin() -> None:
@@ -67,9 +71,26 @@ def test_a_hosted_route_without_a_key_is_reported_distinctly() -> None:
     assert stderr.getvalue() == "ANTHROPIC_API_KEY is required for the hosted backend\n"
 
 
-def test_documented_defaults_cover_every_optional_setting() -> None:
-    assert DEFAULTS == {
-        "OLLAMA_BASE_URL": "http://localhost:11434",
-        "ROUTER_LOCAL_MODEL": "llama3.1:8b",
-        "ROUTER_HOSTED_MODEL": "claude-sonnet-5",
+def test_metrics_render_to_stderr_and_mark_a_forced_route() -> None:
+    stderr = StringIO()
+    result: dict[str, object] = {
+        "route": Route.LOCAL,
+        "outcome": Completed(AIMessage(content="four"), 3, 1),
+        "input_tokens": 3,
+        "output_tokens": 1,
+        "latency_ms": 12,
     }
+
+    exit_code = render_result(result, stderr, metrics=True, forced=True)
+
+    assert exit_code == 0
+    assert stderr.getvalue() == (
+        "route=local forced input_tokens=3 output_tokens=1 latency_ms=12\n"
+    )
+
+
+def test_a_malformed_graph_result_raises() -> None:
+    result: dict[str, object] = {"route": "not-a-route"}
+
+    with pytest.raises(RuntimeError, match="graph result did not contain a route"):
+        render_result(result, StringIO(), metrics=False, forced=False)

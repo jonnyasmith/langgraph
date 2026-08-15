@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "anthropic>=0.75",
+    "httpx>=0.28",
     "langchain-anthropic>=1.0",
     "langchain-core>=1.5",
     "langchain-ollama>=1.0",
