@@ -847,10 +847,12 @@ name = "router"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anthropic" },
     { name = "langchain-anthropic" },
     { name = "langchain-core" },
     { name = "langchain-ollama" },
     { name = "langgraph" },
+    { name = "ollama" },
 ]
 
 [package.dev-dependencies]
@@ -862,10 +864,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anthropic", specifier = ">=0.75" },
     { name = "langchain-anthropic", specifier = ">=1.0" },
     { name = "langchain-core", specifier = ">=1.5" },
     { name = "langchain-ollama", specifier = ">=1.0" },
     { name = "langgraph", specifier = ">=1.0" },
+    { name = "ollama", specifier = ">=0.6" },
 ]
 
 [package.metadata.requires-dev]

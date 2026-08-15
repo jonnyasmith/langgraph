@@ -2,8 +2,7 @@
 
 Deterministic state machine that routes a prompt to the cheapest model that can answer it.
 
-**Status: designed, not implemented.** This document describes the intended structure. Nothing
-under `src/router/` exists yet.
+**Status: implemented.** The source and tests under `src/router/` and `tests/` implement this design.
 
 ## Shape
 
@@ -33,8 +32,9 @@ src/router/
 
 ### `state.py`
 
-The single rigid `TypedDict` that every node contracts against, plus the `Route` and `Outcome`
-enums and unions it references.
+`RouterState` is the single rigid, total `TypedDict` every node reads. `RouterStateDelta` is the
+partial write-side `TypedDict` every node returns. `Route` is a `StrEnum`; the outcome is a named
+union of `Completed`, `BackendUnavailable`, and `BackendRefused`.
 
 | Field | Reducer | Written by |
 | --- | --- | --- |
@@ -79,7 +79,7 @@ Built by factories that close over their configuration:
 
 ```python
 def local_backend(base_url: str, model: str) -> Backend: ...
-def hosted_backend(model: str) -> Backend: ...
+def hosted_backend(model: str, api_key: str | None) -> Backend: ...
 ```
 
 A `Protocol` return type is correct here: a closure has no denotable concrete type, so a callable
@@ -92,21 +92,23 @@ exceptions; `backends.py` catches them and returns variants instead:
 - `BackendUnavailable(detail)` — Ollama not served, network failure
 - `BackendRefused(detail)` — rate limit, overload, provider refusal
 
-The boundary closes with a final `except Exception` mapping to `BackendRefused`. This is a
-deliberate call: an interactive CLI should not print a raw provider traceback. The cost is that a
-bug in our own code inside the boundary is disguised as a provider problem, so the `try` wraps the
-provider call and nothing else.
+The boundary closes with a final `except Exception` mapping to `BackendRefused`. The `try` wraps
+only stream iteration. Connection errors, timeouts, and Ollama request errors become unavailable;
+provider status and response errors become refused. Both clients have a 30-second request timeout.
 
-`backends.py` knows nothing about `RouterState`.
+The hosted client is lazy. A missing API key raises before the exception boundary, so local routes
+need no key and missing credentials are never mislabeled as a provider refusal. Model clients are
+not explicitly closed: the one-shot process cannot reach the wrappers' underlying clients without
+depending on private APIs.
 
 ### `nodes.py`
 
 Node factories, so the graph can close over real backends while tests close over fakes:
 
 ```python
-def score_node() -> Callable[[RouterState], dict[str, object]]: ...
-def local_node(backend: Backend) -> Callable[[RouterState], dict[str, object]]: ...
-def hosted_node(backend: Backend) -> Callable[[RouterState], dict[str, object]]: ...
+def score_node(forced_route: Route | None = None) -> Node: ...
+def local_node(backend: Backend, on_chunk: Callable[[str], None]) -> Node: ...
+def hosted_node(backend: Backend, on_chunk: Callable[[str], None]) -> Node: ...
 ```
 
 Injection is through the closure rather than through `config["configurable"]`, which would be
@@ -124,7 +126,12 @@ Streaming chunks to stdout is a side effect on the terminal, not on state.
 ### `graph.py`
 
 ```python
-def build_graph(local: Backend, hosted: Backend) -> CompiledStateGraph: ...
+def build_graph(
+    local: Backend,
+    hosted: Backend,
+    on_chunk: Callable[[str], None],
+    forced_route: Route | None = None,
+) -> CompiledStateGraph[RouterState, None, RouterState, RouterState]: ...
 ```
 
 Topology only: register the three nodes, add the conditional edge from `score`, wire both backend
@@ -148,17 +155,17 @@ uv run python -m router --metrics "prompt"
 The answer streams to stdout. `--metrics` prints route and token counts to **stderr**, so stdout
 stays pipeable.
 
-There is no `config.py`. A module whose whole job is reading three environment variables is a
-pass-through, and the composition root is where that reading belongs.
+Configuration and `.env` loading stay in the composition root rather than a pass-through
+`config.py`. The `.env` reader skips comments and blanks and never replaces an exported value.
 
 ## Configuration
 
-| Variable | Purpose |
-| --- | --- |
-| `OLLAMA_BASE_URL` | Where the local model is served |
-| `ANTHROPIC_API_KEY` | Hosted backend credential |
-| `ROUTER_LOCAL_MODEL` | Local model name |
-| `ROUTER_HOSTED_MODEL` | Hosted model name |
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `OLLAMA_BASE_URL` | Where the local model is served | `http://localhost:11434` |
+| `ANTHROPIC_API_KEY` | Hosted backend credential | none |
+| `ROUTER_LOCAL_MODEL` | Local model name | `llama3.1:8b` |
+| `ROUTER_HOSTED_MODEL` | Hosted model name | `claude-sonnet-5` |
 
 A missing API key `raise`s rather than becoming an outcome variant — it is an unrecoverable state,
 not an expected failure. It is detected *after* routing, so a run that routes local works with no
@@ -178,9 +185,11 @@ The default run is offline and needs no key and no served model. Model-calling t
 | Surface | What it tests | How |
 | --- | --- | --- |
 | `scoring.route_for` | Threshold behaviour, boundary cases | Direct calls, parametrised over inputs |
-| `nodes.*_node` | Outcome-to-delta translation, including both failure variants | Fake `Backend` returning each variant |
-| `build_graph` | Wiring — short prompts reach local, long prompts reach hosted | Two fake backends, assert on final state |
-| `backends.*` | Real provider calls | Marked `live` |
+| `nodes.*_node` | Forced routing and outcome-to-delta translation | Fake `Backend` outcomes |
+| `build_graph` | Short/long routing and exactly one backend call | Two fake backends |
+| `backends.*` | Provider exception mapping | Fakes raising real exception classes |
+| CLI helpers | Prompt precedence, `.env`, defaults, missing input/key | In-memory streams and mappings |
+| live backends | Streaming and non-zero output tokens | Explicit `live` marker |
 
 A fake `Backend` is the whole test seam. Returning `BackendUnavailable` from a fake is far cheaper
 than arranging a dead Ollama.
