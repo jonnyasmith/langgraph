@@ -11,7 +11,7 @@ from router.backends import Backend, BackendOutcome
 from router.state import Completed, Route
 
 
-def answering_backend() -> Backend:
+def fake_backend_factory(*configuration: str | None) -> Backend:
     def backend(messages: Sequence[AnyMessage], on_chunk: Callable[[str], None]) -> BackendOutcome:
         on_chunk("four")
         return Completed(AIMessage(content="four"), input_tokens=3, output_tokens=1)
@@ -19,12 +19,11 @@ def answering_backend() -> Backend:
     return backend
 
 
-def fake_local_backend(base_url: str, model: str) -> Backend:
-    return answering_backend()
-
-
-def fake_hosted_backend(model: str, api_key: str | None) -> Backend:
-    return answering_backend()
+@pytest.fixture
+def stubbed_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(cli, "_DOTENV_PATH", tmp_path / ".env")
+    monkeypatch.setattr(cli, "local_backend", fake_backend_factory)
+    monkeypatch.setattr(cli, "hosted_backend", fake_backend_factory)
 
 
 def test_an_argument_wins_over_stdin() -> None:
@@ -93,12 +92,7 @@ def test_a_hosted_route_without_a_key_is_reported_distinctly(
     assert stderr.getvalue() == "ANTHROPIC_API_KEY is required for the hosted backend\n"
 
 
-def test_a_successful_run_writes_only_the_answer_to_stdout(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.setattr(cli, "_DOTENV_PATH", tmp_path / ".env")
-    monkeypatch.setattr(cli, "local_backend", fake_local_backend)
-    monkeypatch.setattr(cli, "hosted_backend", fake_hosted_backend)
+def test_a_successful_run_writes_only_the_answer_to_stdout(stubbed_cli: None) -> None:
     stdout = StringIO()
     stderr = StringIO()
 
@@ -115,12 +109,7 @@ def test_a_successful_run_writes_only_the_answer_to_stdout(
     assert stderr.getvalue() == ""
 
 
-def test_metrics_are_one_line_on_stderr_without_polluting_stdout(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.setattr(cli, "_DOTENV_PATH", tmp_path / ".env")
-    monkeypatch.setattr(cli, "local_backend", fake_local_backend)
-    monkeypatch.setattr(cli, "hosted_backend", fake_hosted_backend)
+def test_metrics_are_one_line_on_stderr_without_polluting_stdout(stubbed_cli: None) -> None:
     stdout = StringIO()
     stderr = StringIO()
 
@@ -133,11 +122,12 @@ def test_metrics_are_one_line_on_stderr_without_polluting_stdout(
     )
 
     metrics = stderr.getvalue()
-    latency = metrics.removeprefix("route=local input_tokens=3 output_tokens=1 latency_ms=").strip()
+    prefix = "route=local input_tokens=3 output_tokens=1 latency_ms="
     assert exit_code == 0
     assert stdout.getvalue() == "four"
     assert metrics.count("\n") == 1
-    assert latency.isdigit()
+    assert metrics.startswith(prefix)
+    assert metrics.removeprefix(prefix).strip().isdigit()
 
 
 def test_an_invalid_forced_route_prints_usage_and_exits_two(
@@ -156,7 +146,9 @@ def test_an_invalid_forced_route_prints_usage_and_exits_two(
 
 def test_help_lists_routing_override_and_metrics_flags(
     capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("COLUMNS", "120")
     with pytest.raises(SystemExit) as raised:
         main(["--help"])
 

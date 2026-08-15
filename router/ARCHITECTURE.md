@@ -27,7 +27,7 @@ src/router/
   scoring.py     route_for(prompt) -> Route
   backends.py    Backend, BackendOutcome, local_backend, hosted_backend
   nodes.py       score_node, local_node, hosted_node   (factories)
-  graph.py       build_graph(local, hosted) -> CompiledStateGraph
+  graph.py       build_graph(local, hosted, on_chunk, forced_route=None) -> CompiledStateGraph
   __main__.py    CLI, env, composition root
 ```
 
@@ -36,6 +36,9 @@ src/router/
 `RouterState` is the single rigid, total `TypedDict` every node reads. `RouterStateDelta` is the
 partial write-side `TypedDict` every node returns. `Route` is a `StrEnum`; the outcome is a named
 union of `Completed`, `BackendUnavailable`, and `BackendRefused`.
+
+The partial write type is required because `dict[str, object]` does not satisfy LangGraph's node
+protocol under strict mypy. It also makes delta-only writes part of the checked contract.
 
 | Field | Reducer | Written by |
 | --- | --- | --- |
@@ -156,8 +159,9 @@ uv run python -m router --force hosted "prompt"
 uv run python -m router --metrics "prompt"
 ```
 
-The answer streams to stdout. `--metrics` prints route and token counts to **stderr**, so stdout
-stays pipeable.
+The answer streams to stdout. `--metrics` prints route, input and output token counts, and latency
+as one line on **stderr**, so stdout stays pipeable. Forced runs are marked `forced`. Successful
+runs exit 0, backend failures exit 1, and usage errors exit 2.
 
 Configuration and `.env` loading stay in the composition root rather than a pass-through
 `config.py`. The `.env` reader skips comments and blanks and never replaces an exported value.
@@ -208,3 +212,7 @@ than arranging a dead Ollama.
   conventional LangGraph layout, and it earns the file by owning the outcome translation. The cost
   is two public test surfaces instead of one.
 - **No cost-in-dollars metric.** It would mean hardcoding a price table that goes stale.
+- **LangGraph 1.x constrains several type details.** Node state parameters are named `state` to
+  satisfy its protocol. Nodes return the partial `RouterStateDelta`, because `dict[str, object]`
+  fails strict mypy at that seam. `CompiledStateGraph` carries all four generic parameters rather
+  than using a bare annotation for the same reason.
