@@ -18,9 +18,10 @@ Not implemented.
 
 ## Requirements
 
-- Python (version pinned when a `pyproject.toml` is added)
-- A locally served small language model
-- An API key for the hosted model, via `.env`
+- Python 3.14
+- [uv](https://docs.astral.sh/uv/)
+- A locally served small language model (Ollama, at `OLLAMA_BASE_URL`)
+- An API key for the hosted model, via `.env` — copy `.env.example`
 
 ## Setup
 
@@ -31,8 +32,14 @@ uv sync
 ## Test
 
 ```bash
+uv run ruff format .
+uv run ruff check .
+uv run mypy
 uv run pytest
 ```
+
+The default test run is offline: it needs no API key and no served model. Tests that call a
+real model are marked `live` and run only under `uv run pytest -m live`.
 
 ## Run
 

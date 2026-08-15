@@ -39,7 +39,7 @@ checkpoints/
 # Env and secrets (LLM API keys live here)
 .env
 .env.*
-__omp_shell(".env.example")
+!.env.example
 
 # Notebook scratch
 .ipynb_checkpoints/
