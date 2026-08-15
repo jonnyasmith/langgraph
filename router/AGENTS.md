@@ -4,6 +4,7 @@
 
 ### This context
 
+- Router architecture → ARCHITECTURE.md
 - Router vocabulary → docs/agents/domain.md
 - Router decisions → docs/adr/
 - Router coding standards → docs/CODING_STANDARDS.md
