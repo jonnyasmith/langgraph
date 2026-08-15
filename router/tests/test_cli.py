@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from langchain_core.messages import AIMessage
 
+import router.__main__ as cli
 from router.__main__ import load_dotenv, main, read_prompt, render_result
 from router.state import Completed, Route
 
@@ -54,7 +55,10 @@ def test_exported_environment_values_win_over_dotenv(tmp_path: Path) -> None:
     assert environ["ROUTER_HOSTED_MODEL"] == "exported"
 
 
-def test_a_hosted_route_without_a_key_is_reported_distinctly() -> None:
+def test_a_hosted_route_without_a_key_is_reported_distinctly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(cli, "_DOTENV_PATH", tmp_path / ".env")
     stdout = StringIO()
     stderr = StringIO()
 
