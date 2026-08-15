@@ -49,3 +49,21 @@ def test_the_compiled_graph_routes_to_exactly_one_backend(
     assert calls == [expected_route.value]
     assert chunks == [expected_route.value]
     assert isinstance(result["outcome"], Completed)
+
+
+def test_token_counts_and_latency_accumulate_through_state_reducers() -> None:
+    state = initial_state("what is 2+2")
+    state["input_tokens"] = 7
+    state["output_tokens"] = 11
+    state["latency_ms"] = 13
+    graph = build_graph(
+        recording_backend("local", []),
+        recording_backend("hosted", []),
+        lambda chunk: None,
+    )
+
+    result = graph.invoke(state)
+
+    assert result["input_tokens"] == 8
+    assert result["output_tokens"] == 12
+    assert result["latency_ms"] >= 13
