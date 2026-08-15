@@ -5,9 +5,12 @@ description = "Deterministic state machine that routes a prompt to the cheapest 
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "anthropic>=0.75",
+    "httpx>=0.28",
     "langchain-anthropic>=1.0",
     "langchain-core>=1.5",
     "langchain-ollama>=1.0",
+    "ollama>=0.6",
     "langgraph>=1.0",
 ]
 
